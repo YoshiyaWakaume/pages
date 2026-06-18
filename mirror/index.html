@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; font-weight: bold; }
+        .tab-inactive { color: #6b7280; }
+        .hidden-section { display: none; }
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex flex-col">
+
+    <!-- ヘッダー -->
+    <header class="bg-blue-600 text-white p-4 shadow-md flex items-center justify-between">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            ブラウザ画面ミラーリング
+        </h1>
+        <span class="text-xs bg-blue-700 px-2 py-1 rounded">WebRTC P2P</span>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row max-w-6xl w-full mx-auto p-4 gap-6">
+        
+        <!-- 左側：操作パネル -->
+        <div class="w-full md:w-1/3 bg-white rounded-lg shadow-sm border p-4 flex flex-col">
+            
+            <!-- タブ切り替え -->
+            <div class="flex border-b mb-4">
+                <button id="tab-sender" class="flex-1 py-2 text-center tab-active transition-colors" onclick="switchTab('sender')">
+                    送信側 (iPhone)
+                </button>
+                <button id="tab-receiver" class="flex-1 py-2 text-center tab-inactive transition-colors" onclick="switchTab('receiver')">
+                    受信側 (Windows)
+                </button>
+            </div>
+
+            <!-- 送信側 (Sender) セクション -->
+            <div id="section-sender" class="flex flex-col gap-4">
+                <div class="bg-blue-50 text-blue-800 text-sm p-3 rounded border border-blue-100">
+                    <strong>手順:</strong><br>
+                    1. 画面共有を開始します。<br>
+                    2. 生成されたコードを受信側(PC)に入力します。<br>
+                    3. 受信側から返された応答コードを下に入力して接続します。
+                </div>
+
+                <button id="btn-start-share" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition-colors flex justify-center items-center gap-2" onclick="startScreenShare()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+                    </svg>
+                    1. 画面共有を開始
+                </button>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-sm font-semibold text-gray-700">2. 送信コード (PCへ渡す)</label>
+                    <textarea id="sender-offer-output" class="w-full text-xs p-2 border rounded bg-gray-50 h-20" readonly placeholder="画面共有を開始するとコードが生成されます"></textarea>
+                    <button class="text-sm text-blue-600 font-semibold self-end hover:underline" onclick="copyToClipboard('sender-offer-output')">コードをコピー</button>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-sm font-semibold text-gray-700">3. 応答コードを入力 (PCから受け取る)</label>
+                    <textarea id="sender-answer-input" class="w-full text-xs p-2 border rounded h-20" placeholder="PCで生成された応答コードをここにペースト"></textarea>
+                </div>
+
+                <button id="btn-sender-connect" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50" onclick="senderConnect()" disabled>
+                    接続を完了する
+                </button>
+            </div>
+
+            <!-- 受信側 (Receiver) セクション -->
+            <div id="section-receiver" class="flex flex-col gap-4 hidden-section">
+                <div class="bg-green-50 text-green-800 text-sm p-3 rounded border border-green-100">
+                    <strong>手順:</strong><br>
+                    1. スマホで生成された送信コードを入力します。<br>
+                    2. 応答コードを生成し、スマホ側に入力させます。<br>
+                    3. 自動的に画面が表示されます。
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-sm font-semibold text-gray-700">1. 送信コードを入力</label>
+                    <textarea id="receiver-offer-input" class="w-full text-xs p-2 border rounded h-20" placeholder="スマホで生成されたコードをここにペースト"></textarea>
+                </div>
+
+                <button id="btn-generate-answer" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors" onclick="generateAnswer()">
+                    2. 応答コードを生成
+                </button>
+
+                <div class="flex flex-col gap-1 mt-2">
+                    <label class="text-sm font-semibold text-gray-700">3. 応答コード (スマホへ渡す)</label>
+                    <textarea id="receiver-answer-output" class="w-full text-xs p-2 border rounded bg-gray-50 h-20" readonly placeholder="ボタンを押すとコードが生成されます"></textarea>
+                    <button class="text-sm text-blue-600 font-semibold self-end hover:underline" onclick="copyToClipboard('receiver-answer-output')">コードをコピー</button>
+                </div>
+                
+                <div id="receiver-status" class="text-center text-sm font-bold text-gray-500 mt-2">
+                    待機中...
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 右側：映像プレビュー領域 -->
+        <div class="w-full md:w-2/3 bg-black rounded-lg shadow-md overflow-hidden relative flex items-center justify-center min-h-[300px]">
+            <video id="video-element" class="max-w-full max-h-full" autoplay playsinline muted></video>
+            <div id="video-placeholder" class="absolute text-gray-400 flex flex-col items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <p>ここに画面が表示されます</p>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // WebRTCの設定 (Googleの無料STUNサーバーを利用)
+        const configuration = {
+            'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
+        };
+
+        let peerConnection;
+        let localStream;
+
+        const videoElement = document.getElementById('video-element');
+        const placeholder = document.getElementById('video-placeholder');
+
+        // タブ切り替えロジック
+        function switchTab(tab) {
+            const tabSender = document.getElementById('tab-sender');
+            const tabReceiver = document.getElementById('tab-receiver');
+            const secSender = document.getElementById('section-sender');
+            const secReceiver = document.getElementById('section-receiver');
+
+            if (tab === 'sender') {
+                tabSender.className = 'flex-1 py-2 text-center tab-active transition-colors';
+                tabReceiver.className = 'flex-1 py-2 text-center tab-inactive transition-colors';
+                secSender.style.display = 'flex';
+                secReceiver.style.display = 'none';
+            } else {
+                tabReceiver.className = 'flex-1 py-2 text-center tab-active transition-colors';
+                tabSender.className = 'flex-1 py-2 text-center tab-inactive transition-colors';
+                secReceiver.style.display = 'flex';
+                secSender.style.display = 'none';
+            }
+            
+            // 状態リセット
+            if(peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if(localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                videoElement.srcObject = null;
+                placeholder.style.display = 'flex';
+            }
+        }
+
+        // --- 送信側 (Sender) の処理 ---
+
+        async function startScreenShare() {
+            try {
+                // 画面共有ストリームを取得 (スマホの場合はブラウザがサポートしている必要あり)
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always" },
+                    audio: false
+                });
+
+                // ローカルプレビューを表示
+                videoElement.srcObject = localStream;
+                placeholder.style.display = 'none';
+
+                // WebRTC PeerConnectionの初期化
+                peerConnection = new RTCPeerConnection(configuration);
+
+                // ストリームをPeerConnectionに追加
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // ICE候補の収集が完了したらコードを出力する
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate === null) {
+                        // 収集完了
+                        const offerData = JSON.stringify(peerConnection.localDescription);
+                        // Base64エンコードしてコピーしやすくする
+                        document.getElementById('sender-offer-output').value = btoa(offerData);
+                        document.getElementById('btn-start-share').innerText = "✓ 画面取得済み";
+                        document.getElementById('btn-start-share').classList.replace('bg-blue-600', 'bg-green-600');
+                        document.getElementById('btn-sender-connect').disabled = false;
+                    }
+                };
+
+                // Offerの作成
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+
+            } catch (err) {
+                console.error("Error sharing screen:", err);
+                alert("画面の取得に失敗しました。デバイスやブラウザが対応していない可能性があります。\n" + err.message);
+            }
+        }
+
+        async function senderConnect() {
+            const answerBase64 = document.getElementById('sender-answer-input').value.trim();
+            if (!answerBase64) {
+                alert("応答コードを入力してください。");
+                return;
+            }
+
+            try {
+                // Base64をデコードしてJSONに戻す
+                const answerStr = atob(answerBase64);
+                const answer = JSON.parse(answerStr);
+
+                // リモート(受信側)の情報をセットして接続完了
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                document.getElementById('btn-sender-connect').innerText = "接続確立！配信中";
+                document.getElementById('btn-sender-connect').classList.replace('bg-green-500', 'bg-blue-600');
+            } catch (err) {
+                console.error("Error setting answer:", err);
+                alert("無効な応答コードです。");
+            }
+        }
+
+        // --- 受信側 (Receiver) の処理 ---
+
+        async function generateAnswer() {
+            const offerBase64 = document.getElementById('receiver-offer-input').value.trim();
+            if (!offerBase64) {
+                alert("送信コードを入力してください。");
+                return;
+            }
+
+            try {
+                // WebRTC PeerConnectionの初期化
+                peerConnection = new RTCPeerConnection(configuration);
+
+                // 送信側からの映像トラックを受信した時の処理
+                peerConnection.ontrack = (event) => {
+                    videoElement.srcObject = event.streams[0];
+                    placeholder.style.display = 'none';
+                    document.getElementById('receiver-status').innerText = "接続成功！映像を受信中";
+                    document.getElementById('receiver-status').classList.replace('text-gray-500', 'text-green-600');
+                };
+
+                // ICE候補の収集が完了したら応答コードを出力する
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate === null) {
+                        const answerData = JSON.stringify(peerConnection.localDescription);
+                        document.getElementById('receiver-answer-output').value = btoa(answerData);
+                    }
+                };
+
+                // Base64をデコードしてOfferをセット
+                const offerStr = atob(offerBase64);
+                const offer = JSON.parse(offerStr);
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+                // Answerの作成
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+            } catch (err) {
+                console.error("Error generating answer:", err);
+                alert("送信コードの読み込みに失敗しました。正しくコピーされているか確認してください。");
+            }
+        }
+
+        // --- ユーティリティ ---
+
+        function copyToClipboard(elementId) {
+            const copyText = document.getElementById(elementId);
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); // モバイル用
+
+            try {
+                document.execCommand('copy');
+                // 一時的にボタンのテキストを変更
+                const btn = event.target;
+                const originalText = btn.innerText;
+                btn.innerText = "コピーしました！";
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                }, 2000);
+            } catch (err) {
+                alert('コピーに失敗しました');
+            }
+        }
+    </script>
+</body>
+</html>
